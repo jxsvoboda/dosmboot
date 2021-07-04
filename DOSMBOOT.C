@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "a20.h"
 #include "mboot2.h"
 #include "protmode.h"
 
@@ -20,7 +21,7 @@ typedef struct {
 } tag_t;
 
 mboot2_tag_address_t address;
-uint32_t gdt[4];
+uint32_t gdt[8];
 
 typedef struct {
 	uint16_t limit;
@@ -79,7 +80,6 @@ static int mboot2_tag_addr_read(FILE *f)
 
 	return 0;
 }
-
 
 int mboot2_load(const char *fname)
 {
@@ -175,12 +175,35 @@ int mboot2_load(const char *fname)
 
 int main(int argc, char *argv[])
 {
+	uint16_t code_seg;
+	uint32_t code_seg_ba;
+	uint16_t data_seg;
+	uint32_t data_seg_ba;
+	int a20;
+
 	printf("DOS MultiBoot2 loader.\n");
 	(void) argc;
 	(void) argv;
 
+	code_seg = FP_SEG(main);
+	code_seg_ba = (uint32_t)code_seg << 4;
+
+	data_seg = FP_SEG(gdt);
+	data_seg_ba = (uint32_t)data_seg << 4;
+
+	printf("code_seg=0x%x data_seg=0x%x\n", code_seg, data_seg);
+	printf("code_seg_ba=0x%lx data_seg_ba=0x%lx\n",
+	    code_seg_ba, data_seg_ba);
+
 	if (protmode_is_prot() != 0) {
 		printf("Cannot load OS while in protected mode!\n");
+		return 1;
+	}
+
+	a20 = a20_check();
+	printf("Gate A20: %s\n", a20 ? "Enabled" : "Disabled");
+	if (!a20) {
+		printf("Error: Gate A20 not enabled! (not implemented)\n");
 		return 1;
 	}
 
@@ -188,12 +211,60 @@ int main(int argc, char *argv[])
 	gdt[0] = 0;
 	gdt[1] = 0;
 
-	/* Second GDT entry is a 0-4G flat writable data segment
+	/* Second GDT entry is a 16-bit code segment
+	/*
+         * Base Address[15:0] = ?
+         * Segment Limit[15:0] = 0xffff
+	 */
+	gdt[2] = 0x0000ffffL | ((code_seg_ba & 0xffffL) << 16);
+	/*
+	 * Base Address[31:24] = ?
+	 * G = 0 (1B granularity)
+	 * D = 0 (default operand size: 16 bits)
+	 * AVL = 0 (not used)
+	 * Segment Limit[19:16] = 0x0
+	 * P = 1 (present)
+	 * DPL = 0
+	 * S = 1 (user segment)
+	 * :11 = 1 (code)
+	 * E = 0 (no expand down)
+	 * R = 1 (readable)
+	 * A = 0 (not accessed)
+	 * Base Address[23:16] = ?
+	 */
+	gdt[3] = 0x00009a00L | (code_seg_ba & 0xff000000L) |
+	    ((code_seg_ba >> 16) & 0xff);
+
+	/* Third GDT entry is a 16-bit data segment
+	/*
+         * Base Address[15:0] = ?
+         * Segment Limit[15:0] = 0xffff
+	 */
+	gdt[4] = 0x0000ffffL | ((data_seg_ba & 0xffffL) << 16);
+	/*
+	 * Base Address[31:24] = ?
+	 * G = 0 (1B granularity)
+	 * D = 0 (default operand size: 16 bits)
+	 * AVL = 0 (not used)
+	 * Segment Limit[19:16] = 0x0
+	 * P = 1 (present)
+	 * DPL = 00
+	 * S = 1 (user segment)
+	 * :11 = 0 (data)
+	 * E = 0 (no expand down)
+	 * W = 1 (writable)
+	 * A = 0 (not accessed)
+	 * Base Address[23:16] = ?
+	 */
+	gdt[5] = 0x00009200L | (data_seg_ba & 0xff000000L) |
+	    ((data_seg_ba >> 16) & 0xff);
+
+	/* Fourth GDT entry is a 0-4G flat writable data segment
 	/*
          * Base Address[15:0] = 0
          * Segment Limit[15:0] = 0xffff
 	 */
-	gdt[2] = 0x0000ffffL;
+	gdt[6] = 0x0000ffffL;
 	/*
 	 * Base Address[31:24] = 0
 	 * G = 1 (4K granularity)
@@ -203,15 +274,16 @@ int main(int argc, char *argv[])
 	 * P = 1 (present)
 	 * DPL = 0
 	 * S = 1 (user segment)
-	 * :11 = 0
+	 * :11 = 0 (data)
 	 * E = 0 (no expand down)
 	 * W = 1 (writable)
 	 * A = 0 (not accessed)
+	 * Base Address[23:16] = 0
 	 */
-	gdt[3] = 0x00cf9200L;
+	gdt[7] = 0x00cf9200L;
 
-	/* Two entries 8 bytes each */
-	pgdt.limit = 2 * 8;
+	/* Three entries 8 bytes each */
+	pgdt.limit = 4 * 8;
 	pgdt.base = FP_SEG(&pgdt) * 16L + FP_OFF(&pgdt);
 	printf("limit=0x%x base=0x%lx\n",
 		pgdt.limit, pgdt.base);

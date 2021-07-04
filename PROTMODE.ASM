@@ -30,18 +30,18 @@ _protmode_is_prot ENDP
 ; @param size_t n Number of bytes to copy
 ;
 _protmode_loadhigh PROC
-;	push bp
-;	mov bp, sp
-;	mov edi, [bp+10] ; first argument
-;	xor esi, esi
-;	mov si, [bp+8] ; second argument
-;	xor ecx, ecx
-;	mov cx, [bp+4] ; third argument
-;	push es
+	push bp
+	mov bp, sp
+	mov edi, [bp+10] ; first argument
+	xor esi, esi
+	mov si, [bp+8] ; second argument
+	xor ecx, ecx
+	mov cx, [bp+4] ; third argument
 	cli
+	push es
 
 	; Load GDT with one flat data segment at index 1
-;	lgdt ds:FWORD PTR[_pgdt]
+	lgdt ds:FWORD PTR[_pgdt]
 
 	; Enable protected mode
         mov eax, cr0
@@ -52,8 +52,13 @@ _protmode_loadhigh PROC
 	; protected mode, for which we need to set up a suitable
 	; code segment
 
+	db 0eah ; far jump
+	dw offset now_in_prot
+	dw 08h ; GDT entry 1, RPL = 0
+
+now_in_prot:
 	; Load entry 1 to ES
-;	mov ax, 8
+;;	mov ax, 8
 ;        mov es, ax
 
 ;	db 66h
@@ -64,9 +69,15 @@ _protmode_loadhigh PROC
 	xor eax, 1
 	mov cr0, eax
 
+	; Jump to real-mode address
+	db 0eah ; far jump
+	dw offset now_in_real
+	dw @code
+now_in_real:
+
+	pop es
 	sti
-;	pop es
-;	pop bp
+	pop bp
 	ret
 _protmode_loadhigh ENDP
 
