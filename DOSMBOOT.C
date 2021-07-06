@@ -299,14 +299,25 @@ int main(int argc, char *argv[])
 	/* Four entries 8 bytes each */
 	pgdt.limit = 4 * 8;
 	pgdt.base = FP_SEG(gdt) * 16L + FP_OFF(gdt);
-	printf("limit=0x%x base=0x%lx\n",
-		pgdt.limit, pgdt.base);
+//	printf("limit=0x%x base=0x%lx\n",
+//		pgdt.limit, pgdt.base);
 
-	printf("sizeof(pgdt_t) = %u\n", sizeof(pgdt_t));
+//	printf("sizeof(pgdt_t) = %u\n", sizeof(pgdt_t));
 	//printf("call protmode_loadhigh...\n");
 	//protmode_loadhigh(1024L*1024L + 65536L, argv, 10);
 	//printf("Done\n");
-	return 0;
+//	return 0;
 
 	//return mboot2_load("kernel.elf");
+	if (a20) {
+		printf("Left gate A20 enabled.\n");
+	} else {
+		if (a20_disable() != 0) {
+			printf("Error disabling gate A20!\n");
+			return 1;
+		}
+
+		printf("Disabled gate A20.\n");
+	}
+        return 0;
 }
