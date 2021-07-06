@@ -57,9 +57,10 @@ _protmode_loadhigh PROC
 	dw 08h ; GDT entry 1, RPL = 0
 
 now_in_prot:
+
 	; Load entry 1 to ES
-;;	mov ax, 8
-;        mov es, ax
+;	mov ax, 8
+;	mov es, ax
 
 ;	db 66h
 ;	rep movsb ; es:[edi] <- ds:[esi], ecx times

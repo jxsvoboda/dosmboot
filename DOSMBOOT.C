@@ -179,6 +179,7 @@ int main(int argc, char *argv[])
 	uint32_t code_seg_ba;
 	uint16_t data_seg;
 	uint32_t data_seg_ba;
+	int i;
 	int a20;
 
 	printf("DOS MultiBoot2 loader.\n");
@@ -194,6 +195,10 @@ int main(int argc, char *argv[])
 	printf("code_seg=0x%x data_seg=0x%x\n", code_seg, data_seg);
 	printf("code_seg_ba=0x%lx data_seg_ba=0x%lx\n",
 	    code_seg_ba, data_seg_ba);
+	printf("main=%04x:%04x\n",
+		FP_SEG(main), FP_OFF(main));
+	printf("protmode_loadhigh=%04x:%04x\n",
+		FP_SEG(protmode_loadhigh), FP_OFF(protmode_loadhigh));
 
 	if (protmode_is_prot() != 0) {
 		printf("Cannot load OS while in protected mode!\n");
@@ -204,7 +209,7 @@ int main(int argc, char *argv[])
 	printf("Gate A20: %s\n", a20 ? "Enabled" : "Disabled");
 	if (!a20) {
 		printf("Error: Gate A20 not enabled! (not implemented)\n");
-		return 1;
+		//return 1;
 	}
 
 	/* First GDT entry is unused */
@@ -282,9 +287,12 @@ int main(int argc, char *argv[])
 	 */
 	gdt[7] = 0x00cf9200L;
 
-	/* Three entries 8 bytes each */
+	for (i = 0; i < 8; i++)
+		printf("gdt[%d]=0x%08lx\n", i, gdt[i]);
+
+	/* Four entries 8 bytes each */
 	pgdt.limit = 4 * 8;
-	pgdt.base = FP_SEG(&pgdt) * 16L + FP_OFF(&pgdt);
+	pgdt.base = FP_SEG(gdt) * 16L + FP_OFF(gdt);
 	printf("limit=0x%x base=0x%lx\n",
 		pgdt.limit, pgdt.base);
 
