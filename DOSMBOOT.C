@@ -164,11 +164,14 @@ int mboot2_load(const char *fname)
 	do {
 		nr = fread(dbuf, 1, 16384, f);
 		printf("read %u bytes at address 0x%lx\n", nr, daddr);
+		//protmode_loadhigh(daddr, dbuf, nr);
 		daddr += nr;
 	} while (nr == 16384);
 
 	free(dbuf);
 	fclose(f);
+
+	printf("OS image loaded.\n");
 
 	return 0;
 }
@@ -179,7 +182,6 @@ int main(int argc, char *argv[])
 	uint32_t code_seg_ba;
 	uint16_t data_seg;
 	uint32_t data_seg_ba;
-	int i;
 	int a20;
 
 	printf("DOS MultiBoot2 loader.\n");
@@ -192,6 +194,7 @@ int main(int argc, char *argv[])
 	data_seg = FP_SEG(gdt);
 	data_seg_ba = (uint32_t)data_seg << 4;
 
+/*
 	printf("code_seg=0x%x data_seg=0x%x\n", code_seg, data_seg);
 	printf("code_seg_ba=0x%lx data_seg_ba=0x%lx\n",
 	    code_seg_ba, data_seg_ba);
@@ -199,6 +202,7 @@ int main(int argc, char *argv[])
 		FP_SEG(main), FP_OFF(main));
 	printf("protmode_loadhigh=%04x:%04x\n",
 		FP_SEG(protmode_loadhigh), FP_OFF(protmode_loadhigh));
+*/
 
 	if (protmode_is_prot() != 0) {
 		printf("Cannot load OS while in protected mode!\n");
@@ -206,10 +210,15 @@ int main(int argc, char *argv[])
 	}
 
 	a20 = a20_check();
-	printf("Gate A20: %s\n", a20 ? "Enabled" : "Disabled");
-	if (!a20) {
-		printf("Error: Gate A20 not enabled! (not implemented)\n");
-		//return 1;
+	if (a20) {
+		printf("Gate A20 is already enabled.\n");
+	} else {
+		if (a20_enable() != 0) {
+			printf("Error enabling gate A20!\n");
+			return 1;
+		}
+
+		printf("Enabled gate A20.\n");
 	}
 
 	/* First GDT entry is unused */
@@ -287,9 +296,6 @@ int main(int argc, char *argv[])
 	 */
 	gdt[7] = 0x00cf9200L;
 
-	for (i = 0; i < 8; i++)
-		printf("gdt[%d]=0x%08lx\n", i, gdt[i]);
-
 	/* Four entries 8 bytes each */
 	pgdt.limit = 4 * 8;
 	pgdt.base = FP_SEG(gdt) * 16L + FP_OFF(gdt);
@@ -297,9 +303,9 @@ int main(int argc, char *argv[])
 		pgdt.limit, pgdt.base);
 
 	printf("sizeof(pgdt_t) = %u\n", sizeof(pgdt_t));
-	printf("call protmode_loadhigh...\n");
-	protmode_loadhigh(1024L*1024L + 65536L, argv, 10);
-	printf("Done\n");
+	//printf("call protmode_loadhigh...\n");
+	//protmode_loadhigh(1024L*1024L + 65536L, argv, 10);
+	//printf("Done\n");
 	return 0;
 
 	//return mboot2_load("kernel.elf");

@@ -38,6 +38,7 @@ _protmode_loadhigh PROC
 	xor ecx, ecx
 	mov cx, [bp+4] ; third argument
 	cli
+	push ds
 	push es
 
 	; Load GDT with one flat data segment at index 1
@@ -58,12 +59,16 @@ _protmode_loadhigh PROC
 
 now_in_prot:
 
-	; Load entry 1 to ES
-;	mov ax, 8
-;	mov es, ax
+	; Load entry 2 (16-bit data segment) to DS
+	mov ax, 16
+	mov ds, ax
 
-;	db 66h
-;	rep movsb ; es:[edi] <- ds:[esi], ecx times
+	; Load entry 3 (32-bit flat data segment) to ES
+	mov ax, 24
+	mov es, ax
+
+	db 66h
+	rep movsb ; es:[edi] <- ds:[esi], ecx times
 
 	; Disable protected mode
 	mov eax, cr0
@@ -77,6 +82,7 @@ now_in_prot:
 now_in_real:
 
 	pop es
+	pop ds
 	sti
 	pop bp
 	ret
