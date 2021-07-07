@@ -21,7 +21,8 @@ typedef struct {
 } tag_t;
 
 mboot2_tag_address_t address;
-uint32_t gdt[8];
+mboot2_tag_entry_t entry;
+uint32_t gdt[10];
 
 typedef struct {
 	uint16_t limit;
@@ -30,7 +31,11 @@ typedef struct {
 	uint32_t base;
 } pgdt_t;
 
+/** GDT pointer */
 pgdt_t pgdt;
+
+/** Boot information structure */
+uint32_t mbinfo[4];
 
 static int mboot2_tag_start(FILE *f, uint32_t *remain, tag_t *tag)
 {
@@ -73,13 +78,27 @@ static int mboot2_tag_addr_read(FILE *f)
 	if (nr < sizeof(address))
 		return -1;
 
-	printf("header address: 0x%x\n", address.header_addr);
-	printf("load address: 0x%x\n", address.load_addr);
-	printf("load end address: 0x%x\n", address.load_end_addr);
-	printf("bss end address: 0x%x\n", address.bss_end_addr);
+	printf("header address: 0x%lx\n", address.header_addr);
+	printf("load address: 0x%lx\n", address.load_addr);
+	printf("load end address: 0x%lx\n", address.load_end_addr);
+	printf("bss end address: 0x%lx\n", address.bss_end_addr);
 
 	return 0;
 }
+
+static int mboot2_tag_entry_read(FILE *f)
+{
+	size_t nr;
+
+	printf("mboot2_tag_addr_read\n");
+	nr = fread(&entry, 1, sizeof(entry), f);
+	if (nr < sizeof(entry))
+		return -1;
+
+	printf("entry address: 0x%lx\n", entry.entry_addr);
+	return 0;
+}
+
 
 int mboot2_load(const char *fname)
 {
@@ -91,6 +110,7 @@ int mboot2_load(const char *fname)
 	size_t nr;
 	uint32_t remain;
 	uint32_t daddr;
+	uint32_t mbptr;
 	int rc;
 
 	f = fopen(fname, "rb");
@@ -144,6 +164,9 @@ int mboot2_load(const char *fname)
 		case mboot2_tag_address:
 			rc = mboot2_tag_addr_read(f);
 			break;
+		case mboot2_tag_entry:
+			rc = mboot2_tag_entry_read(f);
+			break;
 		}
 
 		if (rc != 0)
@@ -160,11 +183,13 @@ int mboot2_load(const char *fname)
 		return -1;
 	}
 
-	daddr = address.load_addr;
+	daddr = address.load_addr + 0x140000L;
+	//daddr = FP_SEG(dbuf) * 16 + FP_OFF(dbuf); // XXX
 	do {
 		nr = fread(dbuf, 1, 16384, f);
-		printf("read %u bytes at address 0x%lx\n", nr, daddr);
-		//protmode_loadhigh(daddr, dbuf, nr);
+		//delay(1000);
+		printf("read %u bytes at address 0x%lx from dbuf=%x\n", nr, daddr, dbuf);
+		protmode_loadhigh(daddr, dbuf, nr);
 		daddr += nr;
 	} while (nr == 16384);
 
@@ -172,6 +197,16 @@ int mboot2_load(const char *fname)
 	fclose(f);
 
 	printf("OS image loaded.\n");
+
+	mbptr = FP_SEG(mbinfo) * 16L + FP_OFF(mbinfo);
+	mbinfo[0] = 16;
+	mbinfo[1] = 0;
+	mbinfo[2] = 0;
+	mbinfo[3] = 8;
+
+	printf("MBinfo=0x%lx, start addr = 0x%lx\n", mbptr, entry.entry_addr);
+	delay(5000);
+	protmode_os_exec(mbptr, entry.entry_addr);
 
 	return 0;
 }
@@ -183,6 +218,7 @@ int main(int argc, char *argv[])
 	uint16_t data_seg;
 	uint32_t data_seg_ba;
 	int a20;
+	int rc;
 
 	printf("DOS MultiBoot2 loader.\n");
 	(void) argc;
@@ -296,8 +332,31 @@ int main(int argc, char *argv[])
 	 */
 	gdt[7] = 0x00cf9200L;
 
+	/* Fifth GDT entry is a 0-4G flat code segment
+	/*
+         * Base Address[15:0] = 0
+         * Segment Limit[15:0] = 0xffff
+	 */
+	gdt[8] = 0x0000ffffL;
+	/*
+	 * Base Address[31:24] = 0
+	 * G = 1 (4K granularity)
+	 * D = 0 (default operand size: 16 bits)
+	 * AVL = 0 (not used)
+	 * Segment Limit[19:16] = 0x0
+	 * P = 1 (present)
+	 * DPL = 0
+	 * S = 1 (user segment)
+	 * :11 = 1 (code)
+	 * E = 0 (no expand down)
+	 * R = 1 (readable)
+	 * A = 0 (not accessed)
+	 * Base Address[23:16] = 0
+	 */
+	gdt[9] = 0x00cf9a00L;
+
 	/* Four entries 8 bytes each */
-	pgdt.limit = 4 * 8;
+	pgdt.limit = 4 * 10;
 	pgdt.base = FP_SEG(gdt) * 16L + FP_OFF(gdt);
 //	printf("limit=0x%x base=0x%lx\n",
 //		pgdt.limit, pgdt.base);
@@ -308,7 +367,8 @@ int main(int argc, char *argv[])
 	//printf("Done\n");
 //	return 0;
 
-	//return mboot2_load("kernel.elf");
+	rc = mboot2_load("kernel.elf");
+
 	if (a20) {
 		printf("Left gate A20 enabled.\n");
 	} else {
@@ -319,5 +379,8 @@ int main(int argc, char *argv[])
 
 		printf("Disabled gate A20.\n");
 	}
+
+	if (rc != 0)
+		return 1;
         return 0;
 }

@@ -22,7 +22,8 @@ typedef struct {
 #define MBOOT2_HDR_ALIGN 8
 
 enum {
-	mboot2_tag_address = 2
+	mboot2_tag_address = 2,
+	mboot2_tag_entry = 3
 };
 
 /** Multiboot2 general tag header */
@@ -38,5 +39,9 @@ typedef struct {
 	uint32_t load_end_addr;
 	uint32_t bss_end_addr;
 } mboot2_tag_address_t;
+
+typedef struct {
+	uint32_t entry_addr;
+} mboot2_tag_entry_t;
 
 #endif

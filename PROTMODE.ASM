@@ -10,6 +10,7 @@
 
 	PUBLIC _protmode_is_prot
 	PUBLIC _protmode_loadhigh
+	PUBLIC _protmode_os_exec
 
 ;
 ; Test if we are running in protected mode
@@ -32,11 +33,11 @@ _protmode_is_prot ENDP
 _protmode_loadhigh PROC
 	push bp
 	mov bp, sp
-	mov edi, [bp+10] ; first argument
+	mov edi, [bp+4] ; first argument (32 bits)
 	xor esi, esi
-	mov si, [bp+8] ; second argument
+	mov si, [bp+8] ; second argument (16 bits)
 	xor ecx, ecx
-	mov cx, [bp+4] ; third argument
+	mov cx, [bp+10] ; third argument (16 bits)
 	cli
 	push ds
 	push es
@@ -49,9 +50,7 @@ _protmode_loadhigh PROC
 	or eax, 1
 	mov cr0, eax
 
-	; Note, we probably need to far jump to actually switch to
-	; protected mode, for which we need to set up a suitable
-	; code segment
+	; Jump to 16-bit protected code segment
 
 	db 0eah ; far jump
 	dw offset now_in_prot
@@ -67,8 +66,8 @@ now_in_prot:
 	mov ax, 24
 	mov es, ax
 
-	db 66h
-	rep movsb ; es:[edi] <- ds:[esi], ecx times
+	; Cannot write as rep movsb because we need 32-bit addresses
+	rep movs byte ptr es:[edi], byte ptr ds:[esi]
 
 	; Disable protected mode
 	mov eax, cr0
@@ -87,5 +86,49 @@ now_in_real:
 	pop bp
 	ret
 _protmode_loadhigh ENDP
+
+;
+; Execute OS image
+;
+; @param uint32_t mbptr Multiboot information structure address (linear)
+; @param uint32_t start OS start address (linear)
+;
+_protmode_os_exec PROC
+	push bp
+	mov bp, sp
+
+	; Multiboot information structure pointer
+	mov ebx, [bp+4] ; first argument (32 bits)
+	; Image entry point
+	mov eax, [bp+8] ; second argument (32 bits)
+	mov DWORD PTR cs:[entry_addr], eax
+
+	; Interrupts must be disabled
+	cli
+
+	; Multiboot magic value for i386
+	mov eax, 36d76289h
+
+	; Load entry 3 (32-bit flat data segment)
+	mov ax, 24
+	mov ds, ax
+	mov es, ax
+	mov fs, ax
+	mov gs, ax
+	mov ss, ax
+
+	; Enable protected mode
+        mov eax, cr0
+	or eax, 1
+	mov cr0, eax
+
+	; Jump straight to OS entry point, using flat code segment
+	db 0eah ; far jump
+entry_addr:
+	dw 0 ; fill in at run time
+	dw 32 ; GDT entry 4, RPL = 0
+
+	ret
+_protmode_os_exec ENDP
 
 	END
