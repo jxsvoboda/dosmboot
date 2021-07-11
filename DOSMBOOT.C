@@ -111,6 +111,8 @@ int mboot2_load(const char *fname)
 	uint32_t remain;
 	uint32_t daddr;
 	uint32_t mbptr;
+	long hdr_off;
+	long load_off;
 	int rc;
 
 	f = fopen(fname, "rb");
@@ -138,6 +140,13 @@ int mboot2_load(const char *fname)
 	printf("Header magic value found.\n");
 	if (fseek(f, -MBOOT2_HDR_ALIGN, SEEK_CUR) < 0) {
 		printf("Error seeking.\n");
+		return -1;
+	}
+
+	/* Offset at which multiboot header starts */
+	hdr_off = ftell(f);
+	if (hdr_off < 0) {
+		printf("Error determining file position.\n");
 		return -1;
 	}
 
@@ -174,21 +183,29 @@ int mboot2_load(const char *fname)
 		mboot2_tag_end(f, &tag);
 	}
 
-	printf("Read multiboot header.\n");
+	printf("Read multiboot header (offset=0x%lx).\n", hdr_off);
 
-	rewind(f);
+	load_off = hdr_off - (address.header_addr - address.load_addr);
+	printf("Load start offset 0x%lx\n", load_off);
+
+	rc = fseek(f, load_off, SEEK_SET);
+	if (rc != 0) {
+		printf("Error seeking.\n");
+		return  -1;
+	}
+
 	dbuf = malloc(16384);
 	if (dbuf == NULL) {
 		printf("Error allocating memory.\n");
 		return -1;
 	}
 
-	daddr = address.load_addr + 0x140000L;
+	daddr = address.load_addr;
 	//daddr = FP_SEG(dbuf) * 16 + FP_OFF(dbuf); // XXX
 	do {
 		nr = fread(dbuf, 1, 16384, f);
 		//delay(1000);
-		printf("read %u bytes at address 0x%lx from dbuf=%x\n", nr, daddr, dbuf);
+//		printf("read %u bytes at address 0x%lx from dbuf=%x\n", nr, daddr, dbuf);
 		protmode_loadhigh(daddr, dbuf, nr);
 		daddr += nr;
 	} while (nr == 16384);
@@ -205,7 +222,9 @@ int mboot2_load(const char *fname)
 	mbinfo[3] = 8;
 
 	printf("MBinfo=0x%lx, start addr = 0x%lx\n", mbptr, entry.entry_addr);
+	printf("Sleep before starting kernel...\n");
 	delay(5000);
+	//printf("Start kernel...\n");
 	protmode_os_exec(mbptr, entry.entry_addr);
 
 	return 0;
@@ -230,15 +249,15 @@ int main(int argc, char *argv[])
 	data_seg = FP_SEG(gdt);
 	data_seg_ba = (uint32_t)data_seg << 4;
 
-/*
-	printf("code_seg=0x%x data_seg=0x%x\n", code_seg, data_seg);
+/*	printf("code_seg=0x%x data_seg=0x%x\n", code_seg, data_seg);
 	printf("code_seg_ba=0x%lx data_seg_ba=0x%lx\n",
 	    code_seg_ba, data_seg_ba);
 	printf("main=%04x:%04x\n",
-		FP_SEG(main), FP_OFF(main));
+		FP_SEG(main), FP_OFF(main));*/
 	printf("protmode_loadhigh=%04x:%04x\n",
 		FP_SEG(protmode_loadhigh), FP_OFF(protmode_loadhigh));
-*/
+	printf("protmode_os_exec=%04x:%04x\n",
+		FP_SEG(protmode_os_exec), FP_OFF(protmode_os_exec));
 
 	if (protmode_is_prot() != 0) {
 		printf("Cannot load OS while in protected mode!\n");
@@ -367,6 +386,9 @@ int main(int argc, char *argv[])
 	//printf("Done\n");
 //	return 0;
 
+	printf("Sleep before loading kernel...\n");
+	delay(5000);
+	printf("Load kernel...\n");
 	rc = mboot2_load("kernel.elf");
 
 	if (a20) {

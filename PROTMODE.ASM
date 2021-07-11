@@ -106,8 +106,10 @@ _protmode_os_exec PROC
 	; Interrupts must be disabled
 	cli
 
-	; Multiboot magic value for i386
-	mov eax, 36d76289h
+	; Enable protected mode
+        mov eax, cr0
+	or eax, 1
+	mov cr0, eax
 
 	; Load entry 3 (32-bit flat data segment)
 	mov ax, 24
@@ -117,15 +119,14 @@ _protmode_os_exec PROC
 	mov gs, ax
 	mov ss, ax
 
-	; Enable protected mode
-        mov eax, cr0
-	or eax, 1
-	mov cr0, eax
+	; Multiboot magic value for i386
+	mov eax, 36d76289h
 
 	; Jump straight to OS entry point, using flat code segment
+	db 066h ; 32-bit
 	db 0eah ; far jump
 entry_addr:
-	dw 0 ; fill in at run time
+	dd 0 ; fill in at run time
 	dw 32 ; GDT entry 4, RPL = 0
 
 	ret
