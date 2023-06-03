@@ -35,7 +35,9 @@ typedef struct {
 pgdt_t pgdt;
 
 /** Boot information structure */
-uint32_t mbinfo[4];
+char *mbibuf;
+uint32_t *mbinfo;
+int mbi;
 
 static int mboot2_tag_start(FILE *f, uint32_t *remain, tag_t *tag)
 {
@@ -98,7 +100,6 @@ static int mboot2_tag_entry_read(FILE *f)
 	printf("entry address: 0x%lx\n", entry.entry_addr);
 	return 0;
 }
-
 
 int mboot2_load(const char *fname)
 {
@@ -215,16 +216,82 @@ int mboot2_load(const char *fname)
 
 	printf("OS image loaded.\n");
 
+	mbibuf = calloc(300, 1);
+	if (mbibuf == NULL) {
+		printf("Failed allocating multiboot info structure.\n");
+                return -1;
+	}
+
+	/* Make sure multiboot information structure is aligned to 8 bytes */
+        while ((FP_OFF(mbibuf) % 0x8) != 0)
+		++mbibuf;
+        mbinfo = (uint32_t *)mbibuf;
+
 	mbptr = FP_SEG(mbinfo) * 16L + FP_OFF(mbinfo);
-	mbinfo[0] = 16;
-	mbinfo[1] = 0;
-	mbinfo[2] = 0;
-	mbinfo[3] = 8;
+	mbi = 0;
+
+	/* Header */
+	mbinfo[mbi++] = 0; /* size, fill in later */
+	mbinfo[mbi++] = 0;
+
+	/* Memory map */
+
+	mbinfo[mbi++] = 6;
+	mbinfo[mbi++] = 4*4 + 5*24; /* size */
+	mbinfo[mbi++] = 24; /* entry size */
+	mbinfo[mbi++] = 0; /* entry version */
+
+	/* First entry */
+        mbinfo[mbi++] = 0; /* base */
+	mbinfo[mbi++] = 0;
+	mbinfo[mbi++] = 0x9fc00L; /* length */
+	mbinfo[mbi++] = 0;
+	mbinfo[mbi++] = 1; /* RAM */
+	mbinfo[mbi++] = 0; /* reserved */
+
+	/* Second entry */
+
+        mbinfo[mbi++] = 0x9fc00L; /* base */
+	mbinfo[mbi++] = 0;
+	mbinfo[mbi++] = 0x400L; /* length */
+	mbinfo[mbi++] = 0;
+	mbinfo[mbi++] = 255; /* RESERVED */
+	mbinfo[mbi++] = 0; /* reserved */
+
+	/* Third entry */
+        mbinfo[mbi++] = 0xf0000L; /* base */
+	mbinfo[mbi++] = 0;
+	mbinfo[mbi++] = 0x10000L; /* length */
+	mbinfo[mbi++] = 0;
+	mbinfo[mbi++] = 255; /* RESERVED */
+	mbinfo[mbi++] = 0; /* reserved */
+
+	/* Fourth entry */
+        mbinfo[mbi++] = 0x100000L; /* base */
+	mbinfo[mbi++] = 0;
+	mbinfo[mbi++] = 0xf00000L; /* length */
+	mbinfo[mbi++] = 0;
+	mbinfo[mbi++] = 1; /* RAM */
+	mbinfo[mbi++] = 0; /* reserved */
+
+	/* Fifth entry */
+        mbinfo[mbi++] = 0xfffc0000L; /* base */
+	mbinfo[mbi++] = 0;
+	mbinfo[mbi++] = 0x40000L; /* length */
+	mbinfo[mbi++] = 0;
+	mbinfo[mbi++] = 255; /* RESERVED */
+	mbinfo[mbi++] = 0; /* reserved */
+
+	/* Terminator tag */
+	mbinfo[mbi++] = 0;
+	mbinfo[mbi++] = 8;
+
+	mbinfo[0] = 4 * mbi;
 
 	printf("MBinfo=0x%lx, start addr = 0x%lx\n", mbptr, entry.entry_addr);
 	printf("Sleep before starting kernel...\n");
-	delay(5000);
-	//printf("Start kernel...\n");
+	delay(1000);
+	printf("Start kernel...\n");
 	protmode_os_exec(mbptr, entry.entry_addr);
 
 	return 0;
@@ -387,7 +454,7 @@ int main(int argc, char *argv[])
 //	return 0;
 
 	printf("Sleep before loading kernel...\n");
-	delay(5000);
+	delay(1000);
 	printf("Load kernel...\n");
 	rc = mboot2_load("kernel.elf");
 
